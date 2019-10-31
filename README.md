@@ -1,6 +1,6 @@
 # What Is This?
 
-This is the code behind [my mirror](https://kidneybone.com/c2) of 
+This is the code behind [my mirror](https://kidneybone.com/c2/) of 
 [Ward's Wiki](http://wiki.c2.com). It serves both the static content as well 
 as providing a basic title search and a full-text search.
 
