@@ -181,9 +181,10 @@ let get_search_string (request: System.Net.HttpListenerRequest) =
                 let path_parts =
                     referer.AbsolutePath.Split('/')
                     |> List.ofArray
+                    |> List.rev
 
                 match path_parts with
-                | _ :: "wiki" :: page :: [] -> Some page
+                | page :: "wiki" :: _ -> Some page
                 | _ -> None
         with
         | :? System.UriFormatException ->
@@ -197,11 +198,8 @@ let route (config: Configuration)
           (odi: Search.OnDiskIndex)
           (request: System.Net.HttpListenerRequest)
           (response: System.Net.HttpListenerResponse) =
-    printf "(%s) ~- (%s)\n" request.Url.AbsolutePath config.UrlBase
     if request.Url.AbsolutePath.StartsWith(config.UrlBase) then
         let path = request.Url.AbsolutePath.Substring(config.UrlBase.Length)
-        printf "[%s]\n" path
-
         let search = get_search_string request
 
         if path.Contains("..") then
