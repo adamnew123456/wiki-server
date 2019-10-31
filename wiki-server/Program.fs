@@ -106,6 +106,7 @@ let send_file (filename: string)
         let info = new System.IO.FileInfo(filename)
         response.ContentLength64 <- info.Length
         response.ContentType <- content_type
+        response.Headers.Add("Cache-Control", "max-age=2592000")
 
         let file_stream = System.IO.File.OpenRead(filename)
         file_stream.CopyTo(response.OutputStream)
