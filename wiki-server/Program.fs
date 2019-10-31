@@ -181,9 +181,10 @@ let get_search_string (request: System.Net.HttpListenerRequest) =
                 let path_parts =
                     referer.AbsolutePath.Split('/')
                     |> List.ofArray
+                    |> List.rev
 
                 match path_parts with
-                | _ :: "wiki" :: page :: [] -> Some page
+                | page :: "wiki" :: _ -> Some page
                 | _ -> None
         with
         | :? System.UriFormatException ->
@@ -288,7 +289,7 @@ let main argv =
         }
 
         let listener = new System.Net.HttpListener()
-        listener.Prefixes.Add(sprintf "http://localhost:%d/" config.Port)
+        listener.Prefixes.Add(sprintf "http://+:%d/" config.Port)
         listener.Start()
 
         while true do
