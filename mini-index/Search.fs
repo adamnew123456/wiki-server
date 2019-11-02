@@ -3,7 +3,7 @@ module Search
 open System.Xml
 
 (*
-  The full-text index format we use is split into two parts:
+  The full-text index format we use is split into three parts:
 
     - The string index contains all of the text fragments used within the term
       index, in a sorted form which makes it easy to search. It let us avoid
@@ -16,7 +16,12 @@ open System.Xml
       string keys representing page names. This is what actually allows us to
       perform searches using the terms the user gives to us.
 
-  In addition to splitting strings and terms, we also split each of the two indexes
+    - The backlink index is like the term index, but maps a page title to the set
+      of pages which access it. This lets us make page reference searches (what
+      you get by clicking on a page title) faster and more exact than you would
+      get with a full-text search.
+
+  In addition to these three index types , we also split each of the three indexes
   into an "idx" and an "atlas". The idx contains the actual data, either strings or
   map entries. The atlas contains the offset of the start of each entry in the idx.
   For example, the string atlas might contain the entries:
@@ -32,7 +37,7 @@ open System.Xml
   easily find out where string 42 starts by looking 42 * 8 bytes into the atlas,
   reading the offset, and then looking at that offset in the idx.
 
-  We also sort both the atlas and index data, which makes both of them easier to
+  We also sort both the atlas and idx data, which makes both of them easier to
   scan via binary search later on.
  *)
 
