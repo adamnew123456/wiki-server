@@ -1,5 +1,7 @@
 module Search
 
+open System.Xml
+
 (*
   The full-text index format we use is split into two parts:
 
@@ -39,6 +41,8 @@ type OnDiskIndex = {
     TermIndex: string
     StringAtlas: string
     StringIndex: string
+    BacklinkAtlas: string
+    BacklinkIndex: string
 }
 
 /// <summary>
@@ -144,7 +148,7 @@ let build_single_full_index (filename: string) =
 
         Set.union new_terms terms
 
-    let rec iter posn read_state buffer terms =
+    let rec iter read_state buffer terms =
         let raw_ch = reader.Read()
         if raw_ch = -1 then
             add_buffer_terms buffer terms
@@ -154,31 +158,31 @@ let build_single_full_index (filename: string) =
             // HTML tag state transitions
             if read_state = READ_STATE_TEXT && ch = '<' then
                 let new_terms = add_buffer_terms buffer terms
-                iter (posn + 1) READ_STATE_IN_TAG [] new_terms
+                iter READ_STATE_IN_TAG [] new_terms
             elif read_state = READ_STATE_IN_TAG && ch = '"' then
-                iter (posn + 1) READ_STATE_IN_DQUOTE [] terms
+                iter READ_STATE_IN_DQUOTE [] terms
             elif read_state = READ_STATE_IN_TAG && ch = '\'' then
-                iter (posn + 1) READ_STATE_IN_SQUOTE [] terms
+                iter READ_STATE_IN_SQUOTE [] terms
             elif read_state = READ_STATE_IN_SQUOTE && ch = '\'' then
-                iter (posn + 1) READ_STATE_IN_TAG [] terms
+                iter READ_STATE_IN_TAG [] terms
             elif read_state = READ_STATE_IN_DQUOTE && ch = '"' then
-                iter (posn + 1) READ_STATE_IN_TAG [] terms
+                iter READ_STATE_IN_TAG [] terms
             elif read_state = READ_STATE_IN_TAG && ch = '>' then
-                iter (posn + 1) READ_STATE_TEXT [] terms
+                iter READ_STATE_TEXT [] terms
 
             // HTML entity state transitions. *Technially* we should index
             // these, but in practice letters and numbers won't be encoded this way
             elif read_state = READ_STATE_TEXT && ch = '&' then
-                iter (posn + 1) READ_STATE_IN_ENTITY [] terms
+                iter READ_STATE_IN_ENTITY [] terms
             elif read_state = READ_STATE_IN_ENTITY && ch = ';' then
-                iter (posn + 1) READ_STATE_TEXT [] terms
+                iter READ_STATE_TEXT [] terms
 
             elif read_state = READ_STATE_TEXT then
-                iter (posn + 1) READ_STATE_TEXT (ch :: buffer) terms
+                iter READ_STATE_TEXT (ch :: buffer) terms
             else
-                iter (posn + 1) read_state buffer terms
+                iter read_state buffer terms
 
-    iter 0 READ_STATE_TEXT [] Set.empty
+    iter READ_STATE_TEXT [] Set.empty
 
 /// <summary>
 /// Builds a full-text search index across all pages in the wiki
@@ -257,3 +261,130 @@ let write_term_index (ft_index: Map<string, Set<string>>)
                  matches
                  |> Set.iter (fun mtch ->
                               index_binary.Write(Map.find mtch in_index)))
+
+/// <summary>
+/// Gets the number of entries within an atlas file
+/// </summary>
+let get_atlas_entries (filename: string) =
+    let info = new System.IO.FileInfo(filename)
+    int (info.Length / 8L)
+
+/// <summary>
+/// Reads all page titles from the string index
+/// </summary>
+let read_page_string_index (odi: OnDiskIndex) =
+    use index_stream = System.IO.File.OpenRead(odi.StringIndex)
+    use index_binary = new System.IO.BinaryReader(index_stream, System.Text.Encoding.UTF8)
+
+    let count = get_atlas_entries odi.StringAtlas
+    let page_regex = new System.Text.RegularExpressions.Regex("[A-Z][a-z]+([A-Z][a-z]+)+")
+
+    let rec iter current index =
+        if current = count then
+            index
+        else
+            let name = index_binary.ReadString()
+            if page_regex.IsMatch(name) then
+                iter (current + 1) (Map.add name current index)
+            else
+                iter (current + 1) index
+
+    iter 0 Map.empty
+
+/// <summary>
+/// Builds a set of all the pages which link the given page
+/// </summary>
+let build_single_link_map (filename: string) =
+    use reader = System.IO.File.OpenText(filename)
+
+    // All of the pages in the archive are parseable as XML once BeautifulSoup
+    // processes them, so we can easily pick out specific elements and
+    // attributes via the XML parser
+    let reader = XmlReader.Create(reader)
+
+    let rec iter in_h1 links =
+        if reader.Read() then
+            match reader.NodeType with
+            | XmlNodeType.Element ->
+                if reader.Name = "h1" then
+                    iter true links
+                elif in_h1 then
+                    iter in_h1 links
+                elif reader.Name <> "a" then
+                    iter in_h1 links
+                elif not reader.HasAttributes then
+                    iter in_h1 links
+                elif not <| reader.MoveToAttribute("href") then
+                    iter in_h1 links
+                else
+                    let url = reader.Value
+                    // All the page links generated by the Python stage are
+                    // relative /wiki, and don't require any prefix
+                    if url.Contains("/") then
+                        iter in_h1 links
+                    else
+                        iter in_h1 (Set.add url links)
+
+            | XmlNodeType.EndElement ->
+                if reader.Name = "h1" then
+                    iter false links
+                else
+                    iter in_h1 links
+
+            | _ ->
+                iter in_h1 links
+        else
+            links
+
+    iter false Set.empty
+
+/// <summary>
+/// Builds a full link map for every page in the wiki
+/// </summary>
+let build_full_link_map (dir_name: string) =
+    let wiki_dir = new System.IO.DirectoryInfo(dir_name)
+
+    wiki_dir.GetFiles()
+    |> Seq.fold (fun linkmap file ->
+                 let links = build_single_link_map file.FullName
+                 let page = file.Name.Replace(".html", "")
+                 printf "  Indexing %d links on page %s...\n" (Set.count links) page
+
+                 links
+                 |> Set.fold (fun linkmap link ->
+                              let old_pages =
+                                  match Map.tryFind link linkmap with
+                                  | Some pages -> pages
+                                  | None -> Set.empty
+                              Map.add link (Set.add page old_pages) linkmap)
+                             linkmap)
+                Map.empty
+
+/// <summary>
+/// Builds a link index and atlas from the backlink map
+/// </summary>
+let write_link_map (link_map: Map<string, Set<string>>)
+                   (title_map: Map<string, int>)
+                   (odi: OnDiskIndex) =
+    use index_stream = System.IO.File.Open(odi.BacklinkIndex, System.IO.FileMode.Create)
+    use index_binary = new System.IO.BinaryWriter(index_stream, System.Text.Encoding.UTF8)
+
+    use atlas_stream = System.IO.File.Open(odi.BacklinkAtlas, System.IO.FileMode.Create)
+    use atlas_binary = new System.IO.BinaryWriter(atlas_stream, System.Text.Encoding.UTF8)
+
+    link_map
+    |> Map.toSeq
+    |> Seq.sortWith (fun (a, _) (b, _) ->
+                     System.String.CompareOrdinal(a, b))
+    |> Seq.iter (fun (link, pages) ->
+                 let offset = index_stream.Position
+                 if Map.containsKey link title_map then
+                    atlas_binary.Write(offset)
+                    index_binary.Write(Map.find link title_map)
+                    index_binary.Write(Set.count pages)
+
+                    pages
+                    |> Set.iter (fun page ->
+                                  index_binary.Write(Map.find page title_map))
+                 else
+                   ())
