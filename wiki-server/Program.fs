@@ -210,7 +210,7 @@ let route (config: Configuration)
             response.StatusDescription <- "Not Found"
             response.OutputStream.Close()
 
-        elif path = "/" or path = "" then
+        elif path = "/" || path = "" then
             let static_path = sprintf "%s/%s" config.StaticDirectory "wiki.html"
             send_file static_path "text/html" response
 
@@ -236,7 +236,14 @@ let route (config: Configuration)
                 send_file static_path "text/html" response
 
             | Some query ->
-                let results = Search.query_full_index odi query
+                let results =
+                    if Search.page_title_re.IsMatch(query) then
+                        printf "Performing backlink query: %s\n" query
+                        Search.query_backlink_index odi query
+                    else
+                        printf "Performing full-text query: %s\n" query
+                        Search.query_full_index odi query
+
                 send_search_results results response
 
         elif path = "/static" then
@@ -279,6 +286,8 @@ let main argv =
         let term_index_path = System.IO.Path.Combine(config.FullIndexDirectory, "term.idx")
         let str_atlas_path = System.IO.Path.Combine(config.FullIndexDirectory, "str.atlas")
         let str_index_path = System.IO.Path.Combine(config.FullIndexDirectory, "str.idx")
+        let link_atlas_path = System.IO.Path.Combine(config.FullIndexDirectory, "link.atlas")
+        let link_index_path = System.IO.Path.Combine(config.FullIndexDirectory, "link.idx")
 
         let (odi: Search.OnDiskIndex) = {
             TermEntries=Search.get_atlas_entries term_atlas_path
@@ -287,6 +296,9 @@ let main argv =
             StringEntries=Search.get_atlas_entries str_atlas_path
             StringAtlas=System.IO.File.OpenRead(str_atlas_path)
             StringIndex=System.IO.File.OpenRead(str_index_path)
+            BacklinkEntries=Search.get_atlas_entries link_atlas_path
+            BacklinkAtlas=System.IO.File.OpenRead(link_atlas_path)
+            BacklinkIndex=System.IO.File.OpenRead(link_index_path)
         }
 
         let listener = new System.Net.HttpListener()

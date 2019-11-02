@@ -7,7 +7,16 @@ type OnDiskIndex = {
     StringEntries: int
     StringAtlas: System.IO.Stream
     StringIndex: System.IO.Stream
+    BacklinkEntries: int
+    BacklinkAtlas: System.IO.Stream
+    BacklinkIndex: System.IO.Stream
 }
+
+/// <summary>
+/// Regex for matching page titles, which we search using backlinks instead of
+/// full-text
+/// </summary>
+let page_title_re = new System.Text.RegularExpressions.Regex("[A-Z][a-z]+([A-Z][a-z]+)+")
 
 /// <summary>
 /// Builds a list of all of the page titles in the wiki
@@ -113,11 +122,15 @@ let get_atlas_entries (filename: string) =
 /// <summary>
 /// Converts a string into a string key
 /// </summary>
-let find_string_key (odi: OnDiskIndex) (term: string) =
+let find_string_key (odi: OnDiskIndex) (lowercase: bool) (term: string) =
     use index_binary = new System.IO.BinaryReader(odi.StringIndex, System.Text.Encoding.UTF8, true)
     use atlas_binary = new System.IO.BinaryReader(odi.StringAtlas, System.Text.Encoding.UTF8, true)
 
-    let term = term.ToLower()
+    let term =
+        if lowercase then
+            term.ToLower()
+        else
+            term
 
     let rec bsearch lower_bound upper_bound =
         let midpoint = (lower_bound + upper_bound) / 2
@@ -210,7 +223,7 @@ let query_full_index (odi: OnDiskIndex) (terms: string) =
     let term_keys =
         terms
         |> get_search_terms
-        |> Set.map (find_string_key odi)
+        |> Set.map (find_string_key odi true)
 
     if Set.contains -1 term_keys then
         Set.empty
@@ -222,4 +235,51 @@ let query_full_index (odi: OnDiskIndex) (terms: string) =
 
         rest_terms
         |> Set.fold iter (find_term_matches odi first_term)
+        |> Set.map (find_key_string odi)
+
+/// <summary>
+/// Gets the pages which backlink the given string key
+/// </summary>
+let find_backlink_matches (odi: OnDiskIndex) (key: int) =
+    use index_binary = new System.IO.BinaryReader(odi.BacklinkIndex, System.Text.Encoding.UTF8, true)
+    use atlas_binary = new System.IO.BinaryReader(odi.BacklinkAtlas, System.Text.Encoding.UTF8, true)
+
+    let rec bsearch lower_bound upper_bound =
+        let midpoint = (lower_bound + upper_bound) / 2
+
+        odi.BacklinkAtlas.Seek(int64 midpoint * 8L, System.IO.SeekOrigin.Begin)
+        let offset = atlas_binary.ReadInt64()
+
+        odi.BacklinkIndex.Seek(offset, System.IO.SeekOrigin.Begin)
+        let entry = index_binary.ReadInt32()
+
+        if entry = key then
+            let result_count = index_binary.ReadInt32()
+            [1..result_count]
+            |> Seq.map (fun _ ->
+                        index_binary.ReadInt32())
+            |> Set.ofSeq
+
+        elif lower_bound = upper_bound then
+            Set.empty
+        elif lower_bound = upper_bound - 1 then
+            // Since the sum of these two values will be odd, the midpoint will always be rounded
+            // down. To examine the upper bound in this case we have to explicitly focus on it.
+            bsearch upper_bound upper_bound
+        elif entry > key then
+            bsearch lower_bound midpoint
+        else
+            bsearch midpoint upper_bound
+
+    bsearch 0 (odi.BacklinkEntries - 1)
+
+/// <summary>
+/// Queries the backlink index to find the pages which link to the given page
+/// </summary>
+let query_backlink_index (odi: OnDiskIndex) (page: string) =
+    let link_key = find_string_key odi false page
+    if link_key = -1 then
+        Set.empty
+    else
+        find_backlink_matches odi link_key
         |> Set.map (find_key_string odi)
