@@ -97,6 +97,7 @@ let build_config (ini: Map<string * string, string>) =
 /// </summary>
 let send_file (filename: string)
               (content_type: string)
+              (cache_result: bool)
               (response: System.Net.HttpListenerResponse) =
     if not <| System.IO.File.Exists(filename) then
         response.StatusCode <- 404
@@ -106,7 +107,8 @@ let send_file (filename: string)
         let info = new System.IO.FileInfo(filename)
         response.ContentLength64 <- info.Length
         response.ContentType <- content_type
-        response.Headers.Add("Cache-Control", "max-age=2592000")
+        if cache_result then
+            response.Headers.Add("Cache-Control", "max-age=2592000")
 
         let file_stream = System.IO.File.OpenRead(filename)
         file_stream.CopyTo(response.OutputStream)
@@ -212,13 +214,13 @@ let route (config: Configuration)
 
         elif path = "/" || path = "" then
             let static_path = sprintf "%s/%s" config.StaticDirectory "wiki.html"
-            send_file static_path "text/html" response
+            send_file static_path "text/html" true response
 
         elif path = "/wiki" then
             match search with
             | None ->
                 let static_path = sprintf "%s/%s" config.StaticDirectory "wiki.html"
-                send_file static_path "text/html" response
+                send_file static_path "text/html" false response
 
             | Some query ->
                 let results = Search.query_titles_index titles query
@@ -227,13 +229,13 @@ let route (config: Configuration)
         elif path.StartsWith("/wiki/") then
             let page = path.Substring(6)
             let page_path = sprintf "%s/%s.html" config.WikiDirectory page
-            send_file page_path "text/html" response
+            send_file page_path "text/html" true response
 
         elif path = "/fullSearch" then
             match search with
             | None ->
                 let static_path = sprintf "%s/%s" config.StaticDirectory "wiki.html"
-                send_file static_path "text/html" response
+                send_file static_path "text/html" false response
 
             | Some query ->
                 let results =
@@ -263,7 +265,7 @@ let route (config: Configuration)
                     "application/octet-stream"
 
             let static_path = sprintf "%s/%s" config.StaticDirectory target
-            send_file static_path mime_type response
+            send_file static_path mime_type true response
         else
             response.StatusCode <- 404
             response.StatusDescription <- "Not Found"
