@@ -248,6 +248,13 @@ let route (config: Configuration)
 
                 send_search_results results response
 
+        elif path = "/random" then
+            let title = Search.random_page_title titles
+            response.StatusCode <- 302
+            response.StatusDescription <- "Found"
+            response.RedirectLocation <- "wiki/" + title
+            response.OutputStream.Close()
+
         elif path = "/static" then
             // Nothing will point to the root of /static
             response.StatusCode <- 404

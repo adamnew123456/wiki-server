@@ -37,6 +37,26 @@ let query_titles_index (title_index: Set<string>) (query: string)  =
     |> Seq.filter (fun title -> title.ToLower().Contains(query.ToLower()))
     |> Set.ofSeq
 
+let rng = new System.Random()
+
+/// <summary>
+/// Samples a random page from the title index
+/// </summary>
+let random_page_title (title_index: Set<string>) =
+    let incr = 1.0 / double (Set.count title_index)
+    let (result, _) =
+        title_index
+        |> Set.fold (fun (result, counter) value ->
+                     match (result, counter - incr) with
+                     | (Some _, _) -> (result, counter)
+                     | (_, remaining) when remaining < 0.0 -> (Some value, 0.0)
+                     | (_, remaining) -> (None, remaining))
+                    (None, rng.NextDouble())
+
+    match result with
+    | Some title -> title
+    | None -> Set.minElement title_index
+
 /// <summary>
 /// Gets the basic words in a string
 /// </summary>
