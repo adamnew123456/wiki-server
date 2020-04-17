@@ -172,26 +172,7 @@ let parse_qs (qs: string) =
 /// </summary>
 let get_search_string (request: System.Net.HttpListenerRequest) =
     let parameters = parse_qs request.Url.Query
-    match Map.tryFind "search" parameters with
-    | Some query -> Some query
-    | None ->
-        try
-            let referer_raw = request.Headers.Get("referer")
-            if referer_raw = null then
-                None
-            else
-                let referer = new System.Uri(referer_raw)
-                let path_parts =
-                    referer.AbsolutePath.Split('/')
-                    |> List.ofArray
-                    |> List.rev
-
-                match path_parts with
-                | page :: "wiki" :: _ -> Some page
-                | _ -> None
-        with
-        | :? System.UriFormatException ->
-            None
+    Map.tryFind "search" parameters
 
 /// <summary>
 /// Routes a request to the appropriate handler

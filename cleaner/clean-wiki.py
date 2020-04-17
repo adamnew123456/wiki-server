@@ -1,4 +1,3 @@
-import json
 import os
 import os.path
 import sys
@@ -14,7 +13,7 @@ from bs4 import BeautifulSoup
 #    - Full Search:  /fullSearch
 #    - Logo:         /static/wiki.gif
 
-def map_url(url):
+def map_url(url, page):
     """
     Converts a c2 Wiki URL into a relative URL.
 
@@ -22,7 +21,7 @@ def map_url(url):
     links to site-wide pages are up one level
     """
     if url == 'http://c2.com/cgi/fullSearch':
-        return '../fullSearch'
+        return '../fullSearch?search=' + urlparse.quote(page)
     elif url == 'http://c2.com/sig/wiki.gif' or url == 'http://c2.com/wiki.png':
         return '../static/wiki.gif'
     elif url == 'http://c2.com/cgi/wiki':
@@ -36,6 +35,8 @@ def map_url(url):
         return url[28:]
     elif url.startswith('http://c2.com/cgi/wiki?'):
         return url[23:]
+    elif url.startswith('http://c2.com/cgi/fullSearch'):
+        return '../fullSearch' + url[28:]
     else:
         return url
 
@@ -63,16 +64,19 @@ def normalize_file(filename, src_dir, dest_dir):
     for script in doc('script'):
         script.extract()
 
+    page_name = (os.path.basename(filename)
+                 .replace('wiki?', '')
+                 .replace('.html', ''))
     for tag in doc.find_all():
         if 'src' in tag.attrs:
-            tag.attrs['src'] = map_url(tag.attrs['src'])
+            tag.attrs['src'] = map_url(tag.attrs['src'], page_name)
 
         if 'href' in tag.attrs:
-            tag.attrs['href'] = map_url(tag.attrs['href'])
+            tag.attrs['href'] = map_url(tag.attrs['href'], page_name)
 
         # Forms
         if 'action' in tag.attrs:
-            tag.attrs['action'] = map_url(tag.attrs['action'])
+            tag.attrs['action'] = map_url(tag.attrs['action'], page_name)
 
     # Each page has a 'wiki?' prefix which we want to strip for the clean version
     filename = filename.replace('wiki?', '')
@@ -81,4 +85,5 @@ def normalize_file(filename, src_dir, dest_dir):
 
 if __name__ == '__main__':
     for file in os.listdir(sys.argv[1]):
+        print('Translating', file, '...')
         normalize_file(file, sys.argv[1], sys.argv[2])
