@@ -351,18 +351,23 @@ let build_full_link_map (dir_name: string) =
 
     wiki_dir.GetFiles()
     |> Seq.fold (fun linkmap file ->
-                 let links = build_single_link_map file.FullName
-                 let page = file.Name.Replace(".html", "")
-                 printf "  Indexing %d links on page %s...\n" (Set.count links) page
+                 try
+                     let links = build_single_link_map file.FullName
+                     let page = file.Name.Replace(".html", "")
+                     printfn "  Indexing %d links on page %s..." (Set.count links) page
 
-                 links
-                 |> Set.fold (fun linkmap link ->
-                              let old_pages =
-                                  match Map.tryFind link linkmap with
-                                  | Some pages -> pages
-                                  | None -> Set.empty
-                              Map.add link (Set.add page old_pages) linkmap)
-                             linkmap)
+                     links
+                     |> Set.fold (fun linkmap link ->
+                                  let old_pages =
+                                      match Map.tryFind link linkmap with
+                                      | Some pages -> pages
+                                      | None -> Set.empty
+                                  Map.add link (Set.add page old_pages) linkmap)
+                                 linkmap
+                 with
+                     | err ->
+                         eprintfn "Failed indexing %s: %s" file.FullName err.Message
+                         raise err)
                 Map.empty
 
 /// <summary>
