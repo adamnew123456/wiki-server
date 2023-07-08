@@ -297,7 +297,11 @@ let main argv =
 
         while true do
             let context = listener.GetContext()
-            route config title_index odi context.Request context.Response
+            try 
+                route config title_index odi context.Request context.Response
+            with
+                | :? System.Net.HttpListenerException as err ->
+                    eprintf "Error: %s\n" err.Message
 
         0
 
