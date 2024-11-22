@@ -1,2 +1,8 @@
 obj/
 bin/
+index/
+cleaner/env/
+original-wiki-dir/
+wiki/
+app/
+wiki.txz

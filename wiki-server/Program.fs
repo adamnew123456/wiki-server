@@ -300,7 +300,7 @@ let main argv =
             try 
                 route config title_index odi context.Request context.Response
             with
-                | :? System.Net.HttpListenerException as err ->
+                | :? System.Exception as err ->
                     eprintf "Error: %s\n" err.Message
 
         0
