@@ -72,7 +72,7 @@ after both indexing passes are complete:
 | link.atlas | 288K |
 | link.idx   | 1.9M |
 | str.atlas  | 1.5M |
-| str.idx    | 1.9M |
+| str.idx    | 2.0M |
 | term.atlas | 1.2M |
 | term.idx   | 33M  |
 

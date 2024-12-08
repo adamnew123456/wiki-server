@@ -184,6 +184,8 @@ if __name__ == '__main__':
 
     i = 0
     for file in os.listdir(sys.argv[1]):
+        if os.path.isdir(os.path.join(sys.argv[1], file)):
+            continue
         work_lists[i].append(file)
         i = (i + 1) % threads
 
